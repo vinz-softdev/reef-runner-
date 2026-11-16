@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reef Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --stage: #241b52;
+  --sky: #cfe6f6;
+  --sky-deep: #a9d0ea;
+  --floor: #ecdcc6;
+  --road: #cbc7f3;
+  --road-line: #6a5cc0;
+  --ink: #2b1f6b;
+  --paper: #fffdf8;
+  --lane-a: #ff7a6b;
+  --lane-b: #2fb7a8;
+  --lane-c: #f2b233;
+  --good: #2e9d62;
+  --bad: #d8443f;
+  --font-display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--stage);
+  color: var(--ink);
+  font: 400 15px/1.4 var(--font-body);
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
+#app {
+  position: relative;
+  width: min(100%, 480px);
+  height: 100%;
+  height: 100dvh;
+  margin: 0 auto;
+  background: var(--sky);
+  overflow: hidden;
+}
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pad { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+.hud { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding-top: 12px; padding-bottom: 6px; pointer-events: none; }
+.hearts { display: flex; gap: 4px; }
+.heart { width: 26px; height: 24px; transition: transform .2s; }
+.heart path { fill: var(--lane-a); stroke: var(--ink); stroke-width: 2.2; stroke-linejoin: round; }
+.heart.lost path { fill: #e7e2f6; }
+.heart.hit { animation: pop .4s; }
+@keyframes pop { 30% { transform: scale(1.35) rotate(-8deg); } }
+.hbtns { display: flex; gap: 6px; }
+.mute { width: auto; pointer-events: auto; font: 800 12px/1 var(--font-display); padding: 7px 9px; box-shadow: 2px 2px 0 var(--ink); background: var(--paper); }
+.mute[aria-pressed="true"] { background: #e7e2f6; text-decoration: line-through; }
+.score { font: 800 22px/1 var(--font-display); background: var(--paper); border: 2.5px solid var(--ink); padding: 5px 10px 5px 9px; display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
+.score i { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #d9d2f5 70%); border: 2px solid var(--ink); display: block; }
+
+.board { position: absolute; top: 52px; left: 0; right: 0; pointer-events: none; }
+.board-card { background: var(--paper); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); padding: 10px 12px 12px; transform: rotate(-.6deg); transition: background .2s; }
+.board-card.ok { background: #e4f6ea; }
+.board-card.bad { background: #fde8e6; }
+.qno { font: 600 10px/1.2 var(--font-body); letter-spacing: .08em; text-transform: uppercase; opacity: .65; display: flex; justify-content: space-between; gap: 8px; }
+.qtext { font: 800 18px/1.2 var(--font-display); margin: 6px 0 9px; text-wrap: balance; }
+.opts { display: grid; gap: 7px; }
+.ans { display: flex; gap: 9px; align-items: center; width: 100%; min-width: 0; text-align: left; font: 600 14px/1.2 var(--font-body); padding: 8px 10px; border: 2.5px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); background: var(--paper); color: var(--ink); pointer-events: auto; overflow-wrap: break-word; }
+.ans b { flex: none; width: 22px; height: 22px; border: 2px solid var(--ink); border-radius: 50%; display: grid; place-items: center; font: 800 12px/1 var(--font-display); }
+.ans:nth-child(1) b { background: var(--lane-a); }
+.ans:nth-child(2) b { background: var(--lane-b); }
+.ans:nth-child(3) b { background: var(--lane-c); }
+.ans.right { background: #bfeccd; }
+.ans.wrong { background: #f8c7c3; }
+.ans:disabled { cursor: default; }
+.timer { height: 13px; border: 2px solid var(--ink); background: #e7e2f6; margin-top: 9px; }
+.timer i { display: block; height: 100%; width: 100%; background: var(--lane-b); }
+.timer.low i { background: var(--bad); }
+.expl { font-size: 13px; line-height: 1.35; margin-top: 8px; padding-top: 7px; border-top: 2px dashed var(--ink); }
+.expl[hidden] { display: none; }
+.expl strong { font-family: var(--font-display); font-weight: 800; }
+
+.screen { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(36, 27, 82, .55); padding-block: 16px; }
+.card { width: 100%; max-height: 100%; overflow: auto; touch-action: pan-y; background: var(--paper); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); padding: 20px 18px; }
+.card h1 { font: 800 38px/.95 var(--font-display); margin: 0 0 4px; letter-spacing: -.01em; }
+.card h2 { font: 800 30px/1 var(--font-display); margin: 0 0 6px; }
+.kicker { font: 600 11px/1 var(--font-body); letter-spacing: .14em; text-transform: uppercase; opacity: .65; margin: 0 0 10px; }
+.card p { margin: 8px 0; }
+.how { list-style: none; padding: 0; margin: 12px 0 14px; display: grid; gap: 7px; font-size: 14px; }
+.how li { display: flex; gap: 9px; align-items: flex-start; }
+.how span { flex: none; font: 800 11px/1 var(--font-display); background: var(--ink); color: var(--paper); padding: 4px 6px; margin-top: 1px; }
+button { font: 800 18px/1 var(--font-display); background: var(--lane-b); color: var(--ink); border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); padding: 13px 18px; width: 100%; cursor: pointer; touch-action: manipulation; }
+button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+button:focus-visible { outline: 3px solid var(--lane-c); outline-offset: 3px; }
+.pick { font: 800 12px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; margin: 4px 0 8px; opacity: .7; }
+.cats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cats button { font-size: 15px; padding: 12px 8px; }
+.cats button:nth-child(1) { background: #7fd6a8; }
+.cats button:nth-child(2) { background: #9ec9ff; }
+.cats button:nth-child(3) { background: #ffb3a7; }
+.cats button:nth-child(4) { background: #d9b8ff; }
+.cats button:nth-child(5) { background: #ffd978; }
+.cats button:nth-child(6) { background: #f4b183; }
+.cats button.rand { grid-column: 1 / -1; background: var(--lane-b); }
+.alt { background: var(--paper); margin-top: 10px; }
+.stats { display: flex; gap: 18px; margin: 10px 0 12px; font-variant-numeric: tabular-nums; }
+.stats div b { display: block; font: 800 26px/1 var(--font-display); }
+.stats div span { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; opacity: .65; }
+.missed { margin: 8px 0 16px; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 34vh; overflow: auto; }
+.missed li { font-size: 13px; line-height: 1.3; padding: 8px 10px; background: #f1eefb; border-left: 4px solid var(--bad); }
+.missed li b { font-family: var(--font-display); }
+.best { font-size: 12px; opacity: .7; margin-top: 10px; text-align: center; }
+.nameIn { width: 100%; font: 600 16px var(--font-body); padding: 10px; border: 3px solid var(--ink); background: #fff; color: var(--ink); margin-bottom: 10px; -webkit-user-select: text; user-select: text; }
+.swatches { display: flex; gap: 10px; margin-bottom: 14px; }
+.sw { width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 3px solid var(--ink); box-shadow: none; }
+.sw[aria-pressed="true"] { outline: 3px solid var(--lane-c); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .heart.hit { animation: none; } .board-card { transition: none; } }
+</style>
+</head>
+<body>
+<audio id="bgm" src="music.mp3" loop preload="auto"></audio>
+<div id="app">
+  <canvas id="c" aria-label="Reef Runner game"></canvas>
+
+  <div class="hud pad">
+    <div class="hearts" id="hearts" aria-label="Lives"></div>
+    <div class="hbtns">
+      <button class="mute" id="pauseBtn" type="button">pause</button>
+      <button class="mute" id="muteBtn" type="button" aria-pressed="false">Music</button>
+    </div>
+    <div class="score"><i></i><span id="score">0</span></div>
+  </div>
+
+  <div class="board pad" id="boardWrap" hidden>
+    <div class="board-card" id="board">
+      <div class="qno"><span id="qno">Question 1 of 20</span><span id="hint">10s</span></div>
+      <div class="qtext" id="qtext"></div>
+      <div class="opts" id="opts"></div>
+      <div class="timer" id="timerWrap"><i id="timerBar"></i></div>
+      <div class="expl" id="expl" hidden></div>
+    </div>
+  </div>
+
+  <div class="screen pad" id="startScreen">
+    <div class="card">
+      <p class="kicker">Quiz runner</p>
+      <h1>Reef Runner</h1>
+      <p>Swim into the lane with the right answer. Questions get harder as you go: grade school, then senior high, then college.</p>
+      <ul class="how">
+        <li><span>MOVE</span>Swipe, tap the left or right side, or use the arrow keys or A and D to collect pearls.</li>
+        <li><span>+30</span>Bump a white sign, then pick the right answer within 10 seconds. Pearls are +10 each.</li>
+        <li><span>3 LIVES</span>A wrong answer costs a heart. You get the explanation either way.</li>
+        <li><span>PAUSE</span>Use the Pause button, or press P or Esc.</li>
+      </ul>
+      <p class="pick">Your username</p>
+      <input id="nameIn" class="nameIn" maxlength="14" placeholder="Enter your name" autocomplete="off">
+      <p class="pick">Octopus color</p>
+      <div class="swatches" id="swatches"></div>
+      <p class="pick">Pick a category to start</p>
+      <div class="cats" id="cats">
+        <button type="button" data-cat="biology">Biology</button>
+        <button type="button" data-cat="chemistry">Chemistry</button>
+        <button type="button" data-cat="calculus">Calculus</button>
+        <button type="button" data-cat="grammar">Correct Grammar</button>
+        <button type="button" data-cat="general">General Knowledge</button>
+        <button type="button" data-cat="history">History</button>
+        <button type="button" class="rand" data-cat="random">Random mix</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen pad" id="endScreen" hidden>
+    <div class="card">
+      <p class="kicker" id="endKicker">Run over</p>
+      <h2 id="endTitle">Nice dive</h2>
+      <div class="stats">
+        <div><b id="endScore">0</b><span>Points</span></div>
+        <div><b id="endCorrect">0/0</b><span>Correct</span></div>
+      </div>
+      <div id="missedWrap" hidden>
+        <p class="kicker">Review these</p>
+        <ul class="missed" id="missed"></ul>
+      </div>
+      <button id="againBtn" type="button">Run again</button>
+      <button id="menuBtn" type="button" class="alt">Change category</button>
+      <div class="best" id="bestEnd"></div>
+    </div>
+  </div>
+
+  <div class="screen pad" id="pauseScreen" hidden>
+    <div class="card">
+      <p class="kicker">Paused</p>
+      <h2>Take a breather</h2>
+      <button id="resumeBtn" type="button">Resume</button>
+      <button id="restartBtn" type="button" class="alt">Restart game</button>
+      <button id="pauseMenuBtn" type="button" class="alt">Choose category</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const cvs = $('c'), ctx = cvs.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const C = n => css.getPropertyValue(n).trim();
+  const INK = C('--ink');
+  const FONT = '"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif';
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- Question banks ----------
+     Format: [question, correct, wrong1, wrong2, explanation]
+     Each category has 3 levels: easy (grade school), shs (senior high), college.
+     Every question text must be unique. */
+  const CATS = [
+    { id: 'biology', name: 'Biology' },
+    { id: 'chemistry', name: 'Chemistry' },
+    { id: 'calculus', name: 'Calculus' },
+    { id: 'grammar', name: 'Correct Grammar' },
+    { id: 'general', name: 'General Knowledge' },
+    { id: 'history', name: 'History' }
+  ];
+  const CAT_NAME = { random: 'Random mix' };
+  CATS.forEach(c => CAT_NAME[c.id] = c.name);
+
+  const BANK = {
+    biology: {
+      easy: [
+        ["Plants make their food using sunlight in a process called ___.", "Photosynthesis", "Digestion", "Evaporation", "Plants use sunlight, water and carbon dioxide to make food."],
+        ["Which part of the body pumps blood?", "Heart", "Stomach", "Lung", "The heart pushes blood all around the body."],
+        ["Which of these animals is an insect?", "Butterfly", "Spider", "Snail", "Insects have six legs and three body parts."],
+        ["We breathe in a gas called ___.", "Oxygen", "Helium", "Steam", "Our bodies need oxygen to make energy from food."],
+        ["Baby frogs are called ___.", "Tadpoles", "Cubs", "Kittens", "Tadpoles live in water and grow legs as they become frogs."],
+        ["The roots of a plant take in ___ from the soil.", "Water", "Sunlight", "Wind", "Roots soak up water and minerals."],
+        ["Which of these animals lays eggs?", "Chicken", "Dog", "Cow", "Birds lay eggs, while dogs and cows give birth to live babies."],
+        ["All the bones in our body together make up the ___.", "Skeleton", "Skin", "Brain", "The skeleton holds up our body and protects our organs."],
+        ["Which body part do we use to smell?", "Nose", "Ears", "Knees", "Your nose senses smells in the air."],
+        ["A caterpillar grows up to become a ___.", "Butterfly", "Frog", "Spider", "A caterpillar changes inside a chrysalis and comes out as a butterfly."]
+      ],
+      shs: [
+        ["The powerhouse of the cell is the ___.", "Mitochondrion", "Nucleus", "Ribosome", "Mitochondria make most of the cell's ATP."],
+        ["DNA stands for ___.", "Deoxyribonucleic acid", "Dinucleic amino acid", "Deoxyribose nitrogen acid", "DNA carries the genetic instructions of living things."],
+        ["In a food chain, plants are the ___.", "Producers", "Consumers", "Decomposers", "Producers make their own food by photosynthesis."],
+        ["Which blood cells carry oxygen?", "Red blood cells", "White blood cells", "Platelets", "Hemoglobin in red blood cells binds oxygen."],
+        ["Cell division that makes two identical body cells is called ___.", "Mitosis", "Meiosis", "Fertilization", "Meiosis makes sex cells instead."],
+        ["Which organelle holds the cell's DNA?", "Nucleus", "Vacuole", "Golgi body", "The nucleus controls the cell's activities."],
+        ["Most enzymes are made of ___.", "Proteins", "Sugars", "Salts", "Enzymes speed up chemical reactions in cells."],
+        ["A trait that is hidden when a dominant allele is present is called ___.", "Recessive", "Mutated", "Codominant", "A recessive trait shows only when two recessive alleles are present."],
+        ["The diffusion of water across a semipermeable membrane is called ___.", "Osmosis", "Transpiration", "Respiration", "Water moves toward the side with more dissolved solutes."],
+        ["Which organelle makes proteins?", "Ribosome", "Lysosome", "Chloroplast", "Ribosomes read mRNA and build proteins."],
+        ["A normal human body cell has ___ chromosomes.", "46", "23", "48", "That is 23 pairs, one set from each parent."],
+        ["The gas plants take in for photosynthesis is ___.", "Carbon dioxide", "Oxygen", "Nitrogen", "Plants release oxygen as a by-product."],
+        ["The theory of evolution by natural selection was proposed by ___.", "Charles Darwin", "Gregor Mendel", "Louis Pasteur", "Alfred Russel Wallace came up with the idea independently."],
+        ["Organisms that break down dead matter are called ___.", "Decomposers", "Producers", "Herbivores", "Fungi and bacteria recycle nutrients back into the soil."],
+        ["Which vitamin does the skin make with the help of sunlight?", "Vitamin D", "Vitamin C", "Vitamin A", "Vitamin D helps the body absorb calcium."],
+        ["The study of heredity is called ___.", "Genetics", "Ecology", "Anatomy", "Genetics studies how traits pass from parents to offspring."],
+        ["Which organ system includes the brain and spinal cord?", "Nervous system", "Digestive system", "Circulatory system", "The nervous system sends signals around the body."],
+        ["Plants lose water vapor through tiny pores called ___.", "Stomata", "Petals", "Spores", "Guard cells open and close the stomata."]
+      ],
+      college: [
+        ["During which phase of meiosis do homologous chromosomes separate?", "Anaphase I", "Anaphase II", "Prophase II", "Sister chromatids separate later, in anaphase II."],
+        ["The enzyme that unwinds the DNA double helix during replication is ___.", "Helicase", "Ligase", "Primase", "Helicase breaks the hydrogen bonds between the strands."],
+        ["Most ATP in aerobic respiration is made during ___.", "Oxidative phosphorylation", "Glycolysis", "Fermentation", "The electron transport chain drives ATP synthase."],
+        ["tRNA anticodons pair with mRNA ___.", "Codons", "Introns", "Promoters", "Each codon calls for one amino acid."],
+        ["In the Hardy-Weinberg equation p² + 2pq + q² = 1, the term 2pq stands for ___.", "Heterozygotes", "Homozygous dominant", "Homozygous recessive", "p² and q² are the two homozygous groups."],
+        ["The Calvin cycle takes place in the ___ of the chloroplast.", "Stroma", "Thylakoid membrane", "Outer membrane", "The light reactions happen in the thylakoids."],
+        ["Which enzyme builds mRNA from a DNA template?", "RNA polymerase", "DNA ligase", "Reverse transcriptase", "This step is called transcription."],
+        ["A mutation that changes a codon into a stop codon is called a ___ mutation.", "Nonsense", "Missense", "Silent", "It ends the protein early."],
+        ["In bacteria, the lac operon is switched on when ___ is present.", "Lactose", "Glucose", "Tryptophan", "Lactose (as allolactose) releases the repressor."],
+        ["Hox genes control ___ in embryos.", "Body plan along the head-to-tail axis", "Hormone release", "Immune response", "They decide which structures form on each body segment."],
+        ["Which organelle sorts and packages proteins for secretion?", "Golgi apparatus", "Smooth ER", "Peroxisome", "Proteins arrive from the rough ER and leave in vesicles."],
+        ["The central dogma of molecular biology is ___.", "DNA → RNA → protein", "Protein → RNA → DNA", "RNA → DNA → lipid", "Information flows from DNA to RNA to protein."]
+      ]
+    },
+chemistry: {
+      easy: [
+        ["Water is made of hydrogen and ___.", "Oxygen", "Carbon", "Salt", "Water is H₂O: two hydrogen atoms and one oxygen atom."],
+        ["Ice is water in its ___ state.", "Solid", "Liquid", "Gas", "Water freezes into ice at 0 °C."],
+        ["The chemical symbol for gold is ___.", "Au", "Go", "Gd", "Au comes from the Latin word aurum."],
+        ["Which of these is a gas?", "Oxygen", "Iron", "Milk", "Oxygen is a gas at room temperature."],
+        ["Mixing salt into water makes a ___.", "Solution", "Rock", "Metal", "The salt dissolves in the water."],
+        ["Which is the lightest element?", "Hydrogen", "Gold", "Iron", "Hydrogen is the lightest and simplest element."],
+        ["When water boils, it turns into ___.", "Steam", "Ice", "Sand", "Steam is water in its gas state."],
+        ["Table salt is also called sodium ___.", "Chloride", "Sugar", "Oxide", "Its formula is NaCl."],
+        ["Which of these is a metal?", "Iron", "Carbon", "Helium", "Metals are shiny and conduct electricity."],
+        ["Rust forms when iron reacts with oxygen and ___.", "Water", "Sugar", "Oil", "Rusting needs both oxygen and moisture."]
+      ],
+      shs: [
+        ["The atomic number of an element is the number of ___ in its atom.", "Protons", "Neutrons", "Molecules", "The proton count defines the element."],
+        ["A solution with a pH of 7 is ___.", "Neutral", "Acidic", "Basic", "Pure water is neutral."],
+        ["Which of these is a noble gas?", "Neon", "Chlorine", "Nitrogen", "Noble gases are very unreactive."],
+        ["The formula of table salt is ___.", "NaCl", "KCl", "NaOH", "Sodium chloride."],
+        ["A chemical bond formed by sharing electrons is called ___.", "Covalent", "Ionic", "Metallic", "Ionic bonds transfer electrons instead."],
+        ["Avogadro's number is about ___.", "6.02 × 10²³", "6.02 × 10³²", "3.00 × 10⁸", "It is the number of particles in one mole."],
+        ["Elements in the same column of the periodic table share similar ___.", "Chemical properties", "Masses", "Colors", "They have the same number of valence electrons."],
+        ["The chemical formula of methane is ___.", "CH₄", "C₂H₆", "CO₂", "Methane has one carbon and four hydrogens."],
+        ["Which particle has a negative charge?", "Electron", "Proton", "Neutron", "Protons are positive, neutrons are neutral."],
+        ["An acid turns blue litmus paper ___.", "Red", "Green", "Purple", "Bases turn red litmus paper blue."],
+        ["In a balanced chemical equation, each element has ___ atoms on both sides.", "The same number of", "Double the", "No", "This follows the law of conservation of mass."],
+        ["Which of these is an exothermic process?", "Burning wood", "Melting ice", "Boiling water", "Exothermic processes release heat."],
+        ["The most abundant gas in Earth's atmosphere is ___.", "Nitrogen", "Oxygen", "Carbon dioxide", "Nitrogen makes up about 78% of air."],
+        ["Group 1 elements, like sodium and potassium, are called the ___ metals.", "Alkali", "Alkaline earth", "Transition", "They react strongly with water."],
+        ["The chemical symbol for sodium is ___.", "Na", "So", "S", "Na comes from the Latin word natrium."],
+        ["A substance made of only one kind of atom is an ___.", "Element", "Compound", "Mixture", "Compounds contain two or more elements bonded together."],
+        ["Which state of matter has a fixed shape and a fixed volume?", "Solid", "Liquid", "Gas", "Particles in a solid are locked in place."],
+        ["A solution with a pH of 2 is ___.", "Strongly acidic", "Slightly basic", "Neutral", "A lower pH means a stronger acid."]
+      ],
+      college: [
+        ["Le Chatelier's principle says a system at equilibrium that is disturbed will ___.", "Shift to partly counteract the change", "Become irreversible", "Stop reacting", "The equilibrium moves to reduce the stress."],
+        ["The carbon atoms in ethene (C₂H₄) are ___ hybridized.", "sp²", "sp³", "sp", "Each carbon has three sigma bonds and one pi bond."],
+        ["An SN2 reaction proceeds with ___ of configuration.", "Inversion", "Retention", "Racemization", "The nucleophile attacks from the side opposite the leaving group."],
+        ["Entropy is a measure of ___.", "Disorder", "Total energy", "Pressure", "More possible arrangements means higher entropy."],
+        ["A spontaneous process at constant temperature and pressure has a ___ ΔG.", "Negative", "Positive", "Zero", "ΔG = ΔH − TΔS."],
+        ["In an electrochemical cell, oxidation takes place at the ___.", "Anode", "Cathode", "Salt bridge", "A helpful memory aid is 'An Ox' (anode, oxidation)."],
+        ["The Henderson-Hasselbalch equation relates pH to ___.", "pKa and the ratio of base to acid", "Enthalpy and entropy", "Wavelength and frequency", "pH = pKa + log([A⁻]/[HA])."],
+        ["Which element has the highest electronegativity?", "Fluorine", "Oxygen", "Chlorine", "Fluorine is the most electronegative element."],
+        ["A catalyst speeds up a reaction by ___.", "Lowering the activation energy", "Raising ΔH", "Changing the equilibrium constant", "It gives the reaction an easier pathway."],
+        ["Aromatic compounds such as benzene follow Hückel's rule of ___ π electrons.", "4n + 2", "4n", "2n", "Benzene has 6 π electrons (n = 1)."],
+        ["The ideal gas law is ___.", "PV = nRT", "P = nRV", "PT = nV", "It relates pressure, volume, moles and temperature."],
+        ["Which quantum number describes the shape of an orbital?", "Angular momentum (l)", "Principal (n)", "Spin (ms)", "l = 0 is s, l = 1 is p, and so on."]
+      ]
+    },
+
+    calculus: {
+      easy: [
+        ["7 + 5 = ?", "12", "13", "11", "Seven plus five makes twelve."],
+        ["9 × 3 = ?", "27", "24", "29", "Three nines are twenty-seven."],
+        ["15 − 8 = ?", "7", "6", "9", "Fifteen take away eight is seven."],
+        ["What is half of 20?", "10", "5", "12", "20 ÷ 2 = 10."],
+        ["Which number is the biggest?", "1,000", "999", "99", "1,000 is one more than 999."],
+        ["A triangle has how many sides?", "3", "4", "5", "Tri means three."],
+        ["6 × 6 = ?", "36", "12", "42", "Six sixes are thirty-six."],
+        ["100 ÷ 4 = ?", "25", "20", "40", "Four 25s make 100."],
+        ["What is 3² (three squared)?", "9", "6", "12", "3 × 3 = 9."],
+        ["Which fraction is equal to one half?", "2/4", "1/3", "3/4", "2/4 simplifies to 1/2."]
+      ],
+      shs: [
+        ["Solve for x: 2x + 6 = 14", "x = 4", "x = 10", "x = 8", "Subtract 6 to get 2x = 8, then divide by 2."],
+        ["sin 30° = ?", "1/2", "√3/2", "1", "A 30-60-90 triangle gives sin 30° = 1/2."],
+        ["The slope of the line y = 3x + 2 is ___.", "3", "2", "5", "In y = mx + b, the slope is m."],
+        ["The area of a circle with radius r is ___.", "πr²", "2πr", "πr", "2πr is the circumference."],
+        ["Factor: x² − 9", "(x − 3)(x + 3)", "(x − 3)²", "(x + 9)(x − 1)", "This is a difference of squares."],
+        ["log₁₀(1000) = ?", "3", "10", "100", "10³ = 1000."],
+        ["The Pythagorean theorem states ___.", "a² + b² = c²", "a + b = c", "a² − b² = c²", "It applies to right triangles, where c is the hypotenuse."],
+        ["The limit of x + 1 as x approaches 2 is ___.", "3", "2", "1", "Substitute x = 2."],
+        ["cos 0° = ?", "1", "0", "−1", "At 0° the point on the unit circle is (1, 0)."],
+        ["The solutions of x² − 5x + 6 = 0 are ___.", "x = 2 and x = 3", "x = 1 and x = 6", "x = −2 and x = −3", "It factors as (x − 2)(x − 3)."],
+        ["The domain of √x over the real numbers is ___.", "x ≥ 0", "All real numbers", "x ≤ 0", "You cannot take the real square root of a negative number."],
+        ["The distance from (0, 0) to (3, 4) is ___.", "5", "7", "25", "√(3² + 4²) = 5."],
+        ["The slope of a horizontal line is ___.", "0", "1", "Undefined", "A vertical line has an undefined slope."],
+        ["2⁵ = ?", "32", "25", "10", "2 × 2 × 2 × 2 × 2 = 32."],
+        ["The area of a triangle is ___.", "½ × base × height", "base × height", "2 × base × height", "A triangle is half of a rectangle."],
+        ["sin²θ + cos²θ = ?", "1", "0", "2", "This is the Pythagorean identity."],
+        ["The value of 5! (5 factorial) is ___.", "120", "25", "60", "5 × 4 × 3 × 2 × 1 = 120."],
+        ["The vertex of y = x² is at ___.", "(0, 0)", "(1, 0)", "(0, 1)", "The parabola's lowest point is at the origin."]
+      ],
+      college: [
+        ["d/dx of x³ = ?", "3x²", "x²", "3x", "Power rule: bring down the exponent and subtract 1."],
+        ["d/dx of sin x = ?", "cos x", "−cos x", "−sin x", "The derivative of sine is cosine."],
+        ["∫ 2x dx = ?", "x² + C", "2x² + C", "x + C", "Add one to the power and divide by it."],
+        ["d/dx of eˣ = ?", "eˣ", "x·eˣ⁻¹", "ln x", "eˣ is its own derivative."],
+        ["The limit of sin x / x as x approaches 0 is ___.", "1", "0", "∞", "This is a famous limit, often proved with the squeeze theorem."],
+        ["d/dx of ln x = ?", "1/x", "ln x", "x", "The derivative of the natural log is 1/x."],
+        ["∫ cos x dx = ?", "sin x + C", "−sin x + C", "cos x + C", "Sine differentiates to cosine."],
+        ["The derivative of a function at a point gives its ___ at that point.", "Instantaneous rate of change", "Total area under the curve", "Average value", "It is also the slope of the tangent line."],
+        ["Using the product rule, d/dx of x·eˣ = ?", "eˣ(x + 1)", "x·eˣ", "eˣ", "(1)(eˣ) + (x)(eˣ) = eˣ(x + 1)."],
+        ["The definite integral of x from 0 to 2 is ___.", "2", "4", "1", "[x²/2] from 0 to 2 = 2."],
+        ["d/dx of cos x = ?", "−sin x", "sin x", "−cos x", "The derivative of cosine is negative sine."],
+        ["∫ 1/x dx = ?", "ln|x| + C", "1/x² + C", "x ln x + C", "This works for any x except 0."]
+      ]
+    },
+
+    grammar: {
+      easy: [
+        ["Choose the correct word: She ___ a cat.", "has", "have", "haves", "She is singular, so we use 'has'."],
+        ["Choose the correct word: The sky ___ blue.", "is", "are", "am", "'Sky' is singular, so we use 'is'."],
+        ["Choose the correct word: They ___ playing outside.", "are", "is", "am", "'They' goes with 'are'."],
+        ["Choose the correct word: I ___ a student.", "am", "is", "are", "'I' goes with 'am'."],
+        ["Which sentence is correct?", "The dogs run fast.", "The dogs runs fast.", "The dog run fast.", "A plural subject takes a plural verb."],
+        ["Which word is a noun?", "Table", "Quickly", "Jump", "A noun names a person, place or thing."],
+        ["Which word is a verb?", "Jump", "Happy", "Blue", "A verb shows action."],
+        ["Every question ends with a ___.", "Question mark", "Comma", "Apostrophe", "Use a question mark at the end of a question."],
+        ["Yesterday I ___ to school.", "went", "go", "goes", "'Went' is the past tense of 'go'."],
+        ["We have two ___.", "books", "book", "bookes", "Add -s to make most nouns plural."]
+      ],
+      shs: [
+        ["Choose the correct word: Neither of the boys ___ here.", "is", "are", "were", "'Neither' is singular."],
+        ["Choose the correct word: '___ going to the party?'", "Who's", "Whose", "Whos", "'Who's' is short for 'who is'."],
+        ["Choose the correct word: The report is due ___ Friday.", "by", "at", "of", "'By Friday' means no later than Friday."],
+        ["Choose the correct word: She is ___ than her sister.", "taller", "more tall", "tallest", "Short adjectives take -er when comparing two things."],
+        ["Choose the correct word: The teacher gave the books to Maria and ___.", "me", "I", "myself", "After a preposition, use the object form 'me'."],
+        ["Choose the correct spelling.", "Necessary", "Neccessary", "Necesary", "One c and two s's."],
+        ["Which word is an adverb?", "Carefully", "Careful", "Care", "Adverbs often end in -ly and describe verbs."],
+        ["Choose the correct word: The dog wagged ___ tail.", "its", "it's", "its'", "'It's' always means 'it is' or 'it has'."],
+        ["Choose the correct word: If I ___ you, I would study harder.", "were", "was", "am", "Use 'were' for hypothetical situations."],
+        ["Choose the correct word: There are ___ students today.", "fewer", "less", "lesser", "Use 'fewer' for things you can count."],
+        ["Choose the correct sentence.", "She and I went to the store.", "Her and me went to the store.", "Me and her went to the store.", "Use subject pronouns for the subject of the sentence."],
+        ["Which punctuation mark can join two related independent clauses?", "Semicolon", "Apostrophe", "Hyphen", "Example: I was tired; I went to bed."],
+        ["The plural of 'child' is ___.", "children", "childs", "childrens", "'Children' is an irregular plural."],
+        ["Choose the correct phrase: By next year, I ___ here for ten years.", "will have lived", "have lived", "would lived", "This is the future perfect tense."],
+        ["Choose the correct word: Please put the book over ___.", "there", "their", "they're", "'There' refers to a place."],
+        ["Which word is a proper noun?", "Manila", "Mountain", "School", "Proper nouns name specific things and start with a capital letter."],
+        ["The past tense of 'write' is ___.", "wrote", "writed", "written", "'Written' is the past participle."],
+        ["Choose the correct word: It was ___ cold to swim.", "too", "to", "two", "'Too' means 'more than enough'."]
+      ],
+      college: [
+        ["Find the error: 'Each of the players have a uniform.'", "'have' should be 'has'", "'players' should be 'player'", "'uniform' should be 'uniforms'", "'Each' is singular, so it takes 'has'."],
+        ["Which sentence uses 'whom' correctly?", "To whom did you give the book?", "Whom is at the door?", "Whom called you?", "Use 'whom' as the object of a verb or preposition."],
+        ["Which sentence has a dangling modifier?", "Walking to school, the rain started.", "Walking to school, I got wet in the rain.", "I walked to school in the rain.", "The rain was not the one walking."],
+        ["Choose the sentence with parallel structure.", "She likes reading, swimming, and hiking.", "She likes reading, swimming, and to hike.", "She likes to read, swimming, and hike.", "Keep the items in a list in the same grammatical form."],
+        ["Which sentence is in the passive voice?", "The cake was baked by Ana.", "Ana baked the cake.", "Ana is baking the cake.", "In passive voice, the subject receives the action."],
+        ["Which sentence has correct subject-verb agreement?", "The series of lectures was informative.", "The series of lectures were informative.", "The series of lectures are informative.", "The subject is 'series', not 'lectures'."],
+        ["A comma splice is ___.", "Two independent clauses joined by only a comma", "A missing apostrophe", "Too many adjectives in a row", "Fix it with a period, a semicolon or a conjunction."],
+        ["Choose the correct word: The new policy will ___ all employees.", "affect", "effect", "effects", "'Affect' is usually the verb and 'effect' the noun."],
+        ["Which sentence uses the subjunctive mood correctly?", "I suggest that he be present.", "I suggest that he is present.", "I suggest that he being present.", "Use the base verb after 'suggest that'."],
+        ["Which word is a conjunctive adverb?", "However", "Because", "Although", "'Because' and 'although' are subordinating conjunctions."],
+        ["Which sentence uses a semicolon correctly?", "I was tired; I went to bed.", "I was tired; and I went to bed.", "I was; tired I went to bed.", "A semicolon joins two complete sentences without a conjunction."],
+        ["Which sentence is grammatically correct?", "Having finished the exam, Ana left the room.", "Having finished the exam, the room was left by Ana.", "Finished the exam, the room Ana left.", "The opening phrase must describe the subject, Ana."]
+      ]
+    },
+
+    general: {
+      easy: [
+        ["How many days are in a week?", "7", "5", "10", "Monday to Sunday makes seven days."],
+        ["What color do you get by mixing blue and yellow?", "Green", "Purple", "Orange", "Blue and yellow make green."],
+        ["Which planet do we live on?", "Earth", "Mars", "Venus", "Earth is the third planet from the Sun."],
+        ["How many legs does a spider have?", "8", "6", "10", "Spiders are arachnids, not insects."],
+        ["Which animal is called the king of the jungle?", "Lion", "Elephant", "Monkey", "Lions are often given this nickname."],
+        ["What is the capital of the Philippines?", "Manila", "Cebu", "Davao", "Manila is the capital city."],
+        ["The sun rises in the ___.", "East", "West", "North", "It sets in the west."],
+        ["How many months are in a year?", "12", "10", "11", "January to December."],
+        ["Which shape has four equal sides?", "Square", "Triangle", "Circle", "A square also has four right angles."],
+        ["Which season is the coldest?", "Winter", "Summer", "Spring", "Winter has the lowest temperatures in many countries."]
+      ],
+      shs: [
+        ["Who is considered the national hero of the Philippines?", "José Rizal", "Andrés Bonifacio", "Emilio Aguinaldo", "Rizal was executed on December 30, 1896."],
+        ["What is the largest continent?", "Asia", "Africa", "North America", "Asia is the largest by both area and population."],
+        ["Who painted the Mona Lisa?", "Leonardo da Vinci", "Michelangelo", "Raphael", "He painted it in the early 1500s."],
+        ["Which ocean is the largest?", "Pacific", "Atlantic", "Indian", "The Pacific covers about a third of the Earth."],
+        ["World War II ended in ___.", "1945", "1939", "1950", "It ended in 1945."],
+        ["The Philippines declared independence from Spain in ___.", "1898", "1946", "1521", "Independence was declared on June 12, 1898."],
+        ["Who wrote Romeo and Juliet?", "William Shakespeare", "Charles Dickens", "Mark Twain", "Shakespeare wrote it in the 1590s."],
+        ["What is the currency of Japan?", "Yen", "Won", "Yuan", "The Japanese yen has the symbol ¥."],
+        ["The Great Wall is located in ___.", "China", "India", "Egypt", "It stretches thousands of kilometers across northern China."],
+        ["Which planet is known as the Red Planet?", "Mars", "Jupiter", "Mercury", "Iron oxide (rust) gives Mars its red color."],
+        ["Which country is the largest by area?", "Russia", "Canada", "China", "Russia spans eleven time zones."],
+        ["Who was the first person to walk on the Moon?", "Neil Armstrong", "Buzz Aldrin", "Yuri Gagarin", "He did so on July 20, 1969, during Apollo 11."],
+        ["What is the capital of Australia?", "Canberra", "Sydney", "Melbourne", "Canberra was built as a compromise between Sydney and Melbourne."],
+        ["How many continents are there?", "7", "6", "8", "Asia, Africa, North America, South America, Antarctica, Europe and Australia/Oceania."],
+        ["Who invented the telephone?", "Alexander Graham Bell", "Thomas Edison", "Nikola Tesla", "Bell received the patent in 1876."],
+        ["Which is the tallest mountain on Earth above sea level?", "Mount Everest", "K2", "Mount Kilimanjaro", "Everest is about 8,849 m high."],
+        ["Which country gave the Statue of Liberty to the United States?", "France", "England", "Spain", "It was a gift in 1886."],
+        ["What is the capital of Japan?", "Tokyo", "Osaka", "Kyoto", "Tokyo is the capital and largest city."]
+      ],
+      college: [
+        ["The Treaty of Versailles (1919) formally ended which war with Germany?", "World War I", "World War II", "The Franco-Prussian War", "It also required Germany to pay reparations."],
+        ["Who wrote The Wealth of Nations?", "Adam Smith", "Karl Marx", "John Maynard Keynes", "It was published in 1776."],
+        ["GDP stands for ___.", "Gross Domestic Product", "General Domestic Production", "Gross Development Plan", "It measures the value of goods and services produced in a country."],
+        ["The Renaissance began in which country?", "Italy", "France", "England", "It started in Florence in the 14th century."],
+        ["Who developed the theory of general relativity?", "Albert Einstein", "Isaac Newton", "Niels Bohr", "He published it in 1915."],
+        ["The Cold War was mainly a rivalry between ___.", "The USA and the USSR", "The UK and Germany", "China and Japan", "It was a political and military tension without direct full-scale war."],
+        ["Which philosopher wrote Critique of Pure Reason?", "Immanuel Kant", "René Descartes", "Friedrich Nietzsche", "It was first published in 1781."],
+        ["The Magna Carta was signed in ___.", "1215", "1066", "1492", "King John of England sealed it."],
+        ["Which organization was founded in 1945 to promote international peace?", "United Nations", "League of Nations", "NATO", "The League of Nations came after World War I."],
+        ["Who proposed the heliocentric model of the solar system in 1543?", "Nicolaus Copernicus", "Galileo Galilei", "Johannes Kepler", "His model placed the Sun, not the Earth, at the center."],
+        ["Who wrote The Republic, a dialogue about justice?", "Plato", "Aristotle", "Socrates", "Plato was a student of Socrates."],
+        ["The French Revolution began in ___.", "1789", "1776", "1815", "It started with the storming of the Bastille."]
+      ]
+    },
+
+    history: {
+      easy: [
+        ["Who was the first President of the United States?", "George Washington", "Abraham Lincoln", "Thomas Jefferson", "He led the country from 1789 to 1797."],
+        ["Ancient Egyptians built huge stone tombs called ___.", "Pyramids", "Castles", "Igloos", "Pharaohs were buried inside the pyramids."],
+        ["The Philippines celebrates Independence Day on June ___.", "12", "4", "30", "Independence was declared on June 12, 1898."],
+        ["Who sailed across the Atlantic in 1492 for Spain?", "Christopher Columbus", "Ferdinand Magellan", "Marco Polo", "He reached islands in the Americas."],
+        ["The Great Wall of China was built to protect against ___.", "Invaders", "Floods", "Fires", "It stretches thousands of kilometers."],
+        ["Long ago, kings and queens lived in big stone ___.", "Castles", "Tents", "Boats", "Castles were also built for defense."]
+      ],
+      shs: [
+        ["Who founded the Katipunan in 1892?", "Andrés Bonifacio", "José Rizal", "Emilio Aguinaldo", "The Katipunan fought for freedom from Spain."],
+        ["World War I began in ___.", "1914", "1939", "1905", "It started after the assassination of Archduke Franz Ferdinand."],
+        ["The Berlin Wall fell in ___.", "1989", "1961", "1975", "It was built in 1961 and fell in 1989."],
+        ["Who led the forces that defeated Magellan at Mactan?", "Lapulapu", "Rajah Humabon", "Sikatuna", "The battle took place on April 27, 1521."],
+        ["Who was the first emperor of Rome?", "Augustus", "Julius Caesar", "Nero", "Augustus ruled from 27 BC."],
+        ["The Industrial Revolution began in ___.", "Great Britain", "The United States", "Germany", "It began in the mid-1700s."],
+        ["Martial Law in the Philippines was declared in ___.", "1972", "1986", "1965", "President Ferdinand Marcos declared it on September 21, 1972."],
+        ["The EDSA People Power Revolution took place in ___.", "1986", "1972", "2001", "It ended the Marcos regime."],
+        ["Who led India's nonviolent movement for independence?", "Mahatma Gandhi", "Jawaharlal Nehru", "Winston Churchill", "India gained independence in 1947."],
+        ["Which river was central to ancient Egyptian civilization?", "Nile", "Amazon", "Danube", "Yearly floods made the land fertile."]
+      ],
+      college: [
+        ["The Peace of Westphalia (1648) ended which war?", "Thirty Years' War", "Hundred Years' War", "Seven Years' War", "It helped shape the modern idea of state sovereignty."],
+        ["The Ottoman Empire captured Constantinople in ___.", "1453", "1204", "1517", "This ended the Byzantine Empire."],
+        ["The Treaty of Paris (1898) ended which war?", "Spanish-American War", "Philippine-American War", "Russo-Japanese War", "Spain ceded the Philippines to the US."],
+        ["The Congress of Vienna (1815) followed the defeat of ___.", "Napoleon", "Bismarck", "Louis XIV", "It tried to restore balance in Europe."],
+        ["The Meiji Restoration began in Japan in ___.", "1868", "1792", "1905", "It modernized Japan and ended the shogunate."],
+        ["Who posted the Ninety-five Theses in 1517?", "Martin Luther", "John Calvin", "Erasmus", "It sparked the Protestant Reformation."],
+        ["Tenochtitlan was the capital of the ___ Empire.", "Aztec", "Inca", "Maya", "Mexico City now stands on its ruins."]
+      ]
+    }
+  };
+  const N_EASY = 5, N_SHS = 9, N_COLLEGE = 6;   // 20 questions per run
+  const QTIME = 10;                              // seconds to answer
+
+  /* ---------- No-repeat memory ---------- */
+  const SEEN_KEY = 'reefRunnerSeen2';
+  let seen = new Set();
+  try { const s = JSON.parse(localStorage.getItem(SEEN_KEY)); if (Array.isArray(s)) seen = new Set(s); } catch (e) {}
+  function saveSeen() { try { localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(seen))); } catch (e) {} }
+  function markSeen(d) { if (!seen.has(d[0])) { seen.add(d[0]); saveSeen(); } }
+
+  function poolFor(tier) {
+    const ids = catId === 'random' ? CATS.map(c => c.id) : [catId];
+    return ids.flatMap(id => BANK[id][tier].map(d => ({ d, cat: id })));
+  }
+  function pick(pool, n, level) {
+    let chosen = shuffle(pool.filter(o => !seen.has(o.d[0]))).slice(0, n);
+    if (chosen.length < n) {
+      pool.forEach(o => seen.delete(o.d[0]));   // restart the cycle for this pool only
+      saveSeen();
+      const ids = new Set(chosen.map(o => o.d[0]));
+      chosen = chosen.concat(shuffle(pool.filter(o => !ids.has(o.d[0]))).slice(0, n - chosen.length));
+    }
+    return chosen.map(o => Object.assign(o.d.slice(), { level, cat: o.cat }));
+  }
+
+  /* ---------- State ---------- */
+  const ZP = 3, ZFAR = 64, LANES = 3;
+  let W = 0, H = 0, HY = 0, PY = 0, LW = 0, dpr = 1;
+  let mode = 'start';          // start | play | over
+  let phase = 'ask';
+  let catId = 'random';
+  let deck = [], qi = 0, hearts = 3, score = 0, correctCount = 0, missed = [];
+  let speed = 10, dist = 0, time = 0, shake = 0, phaseTimer = 0, endTimer = 0;
+  let target = 0, px = 0;      // lane -1..1
+  let gates = [], pearls = [], deco = [], pops = [], bubbles = [];
+  let cur = null, qTimer = QTIME;
+
+  /* ---------- Player: name, octopus color, pause ---------- */
+  const OCTO = [
+    ['#7a5ae0', '#5a3dbd', '#6a49d0'],
+    ['#ff7a6b', '#d9554a', '#e8685a'],
+    ['#2fb7a8', '#1f8f83', '#27a396'],
+    ['#f2b233', '#c98d14', '#dba122'],
+    ['#ff8fc7', '#d9649f', '#ea78b3']
+  ];
+  let octo = 0, playerName = '', paused = false;
+  try {
+    octo = +localStorage.getItem('reefOcto') || 0;
+    playerName = localStorage.getItem('reefName') || '';
+  } catch (e) {}
+  if (octo < 0 || octo >= OCTO.length) octo = 0;
+
+  function renderSwatches() {
+    $('swatches').innerHTML = OCTO.map((c, i) =>
+      '<button type="button" class="sw" data-i="' + i + '" aria-label="Octopus color ' + (i + 1) + '" aria-pressed="' + (i === octo) + '" style="background:' + c[0] + '"></button>'
+    ).join('');
+  }
+  function clearPause() {
+    paused = false;
+    $('pauseScreen').hidden = true;
+    $('boardWrap').style.visibility = '';
+  }
+  function setPause(p) {
+    if (mode !== 'play' || paused === p) return;
+    paused = p;
+    $('pauseScreen').hidden = !p;
+    $('boardWrap').style.visibility = p ? 'hidden' : '';
+    if (p) { try { bgm.pause(); } catch (e) {} }
+    else if (!muted) { const r = bgm.play(); if (r && r.catch) r.catch(() => {}); }
+  }
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  function resize() {
+    const r = cvs.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    cvs.width = Math.round(W * dpr); cvs.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    HY = H * 0.43; PY = H * 0.84; LW = Math.min(W * 0.27, H * 0.2);
+  }
+  const proj = (x, z) => { const s = ZP / z; return { x: W / 2 + x * LW * s, y: HY + (PY - HY) * s, s }; };
+
+  /* ---------- Scenery ---------- */
+  function newDeco(z) {
+    const side = Math.random() < .5 ? -1 : 1;
+    const type = ['kelp', 'coral', 'rock', 'shell', 'coral', 'kelp'][Math.floor(Math.random() * 6)];
+    return { type, side, x: side * rand(2.1, 4.2), z, seed: Math.random() * 10, hue: Math.floor(rand(0, 3)) };
+  }
+  function initScene() {
+    deco = []; for (let i = 0; i < 30; i++) deco.push(newDeco(rand(2, ZFAR)));
+    bubbles = []; for (let i = 0; i < 22; i++) bubbles.push({ x: Math.random(), y: Math.random(), r: rand(2, 6), v: rand(.02, .07) });
+  }
+
+  /* ---------- Game flow ---------- */
+  function startRun(cat) {
+    if (cat) catId = cat;
+    clearPause();
+    playerName = ($('nameIn').value.trim() || 'Player').slice(0, 14);
+    try { localStorage.setItem('reefName', playerName); } catch (e) {}
+    // 5 grade school -> 9 senior high -> 6 college, in that order, no repeats until a pool runs out
+    deck = [].concat(
+      pick(poolFor('easy'), N_EASY, 'Grade school'),
+      pick(poolFor('shs'), N_SHS, 'Senior high'),
+      pick(poolFor('college'), N_COLLEGE, 'College')
+    );
+    qi = 0; hearts = 3; score = 0; correctCount = 0; missed = [];
+    gates = []; pearls = []; pops = []; target = 0; px = 0; speed = 10; endTimer = 0;
+    mode = 'play';
+    playMusic();
+    $('startScreen').hidden = true; $('endScreen').hidden = true; $('boardWrap').hidden = true;
+    renderHearts(); $('score').textContent = '0';
+    nextQuestion();
+  }
+
+  function nextQuestion() {
+    const d = deck[qi];
+    const opts = shuffle([{ t: d[1], ok: true }, { t: d[2], ok: false }, { t: d[3], ok: false }]);
+    cur = { d, opts, correct: opts.findIndex(o => o.ok), z: ZFAR, resolved: false, picked: -1 };
+    gates.push(cur);
+    phase = 'run';
+    speed = Math.min(10 + qi * 0.22, 14);
+    $('board').className = 'board-card';
+    $('qno').textContent = 'Q' + (qi + 1) + '/' + deck.length + ' \u00b7 ' + CAT_NAME[d.cat] + ' \u00b7 ' + d.level;
+    $('hint').textContent = QTIME + 's';
+    $('qtext').textContent = d[0];
+    $('opts').innerHTML = opts.map((o, i) => '<button type="button" class="ans" data-i="' + i + '"><b>' + 'ABC'[i] + '</b><span></span></button>').join('');
+    $('timerWrap').classList.remove('low'); $('timerBar').style.width = '100%';
+    [...$('opts').querySelectorAll('span')].forEach((s, i) => s.textContent = opts[i].t);
+    $('expl').hidden = true;
+    $('boardWrap').hidden = true;   // question appears when the octopus bumps a white sign
+  }
+
+  function openQuestion() {
+    phase = 'question'; qTimer = QTIME;
+    $('boardWrap').hidden = false;
+    markSeen(cur.d);               // remember it so it will not come back in later runs
+  }
+
+  function answer(i) {
+    if (phase !== 'question' || paused) return;
+    const g = cur;
+    g.resolved = true; g.picked = i;
+    const ok = i === g.correct;
+    const x = W / 2 + px * LW;
+    if (ok) {
+      score += 30; correctCount++;
+      pops.push({ x, y: PY - LW * .9, t: '+30', age: 0, col: '#f2b233' });
+    } else {
+      hearts--; shake = 0.35; missed.push(g.d);
+      renderHearts(true);
+    }
+    $('score').textContent = score;
+    $('board').className = 'board-card ' + (ok ? 'ok' : 'bad');
+    const ex = $('expl'); ex.hidden = false;
+    ex.innerHTML = '<strong></strong> <span></span>';
+    ex.firstChild.textContent = ok ? 'Correct!' : (i < 0 ? 'Time is up. ' : '') + 'Answer: ' + g.d[1] + '.';
+    ex.lastChild.textContent = g.d[4];
+    [...$('opts').children].forEach((b, k) => { b.disabled = true; if (k === g.correct) b.classList.add('right'); else if (k === i) b.classList.add('wrong'); });
+    gates = gates.filter(x => x !== g);
+    phase = 'result';
+    phaseTimer = ok ? 2.6 : 3.4;
+    // pearl trail for the next stretch
+    if (hearts > 0 && qi + 1 < deck.length) {
+      const L = Math.floor(rand(-1, 2));
+      for (let i = 0; i < 6; i++) pearls.push({ lane: L, z: ZFAR + i * 2.6, got: false });
+    }
+  }
+  function endRun() {
+    mode = 'over';
+    try { bgm.pause(); bgm.currentTime = 0; } catch (e) {}
+    $('boardWrap').hidden = true;
+    const finished = hearts > 0;
+    $('endKicker').textContent = (finished ? 'Run complete' : 'Out of hearts') + ' \u00b7 ' + CAT_NAME[catId];
+    $('endTitle').textContent = !finished ? 'Take another dive' : (correctCount >= deck.length * .8 ? 'Reef master' : 'Nice dive');
+    $('endScore').textContent = score;
+    $('endCorrect').textContent = correctCount + '/' + (finished ? deck.length : qi + 1);
+    $('missedWrap').hidden = missed.length === 0;
+    $('missed').innerHTML = '';
+    missed.forEach(d => {
+      const li = document.createElement('li');
+      const b = document.createElement('b'); b.textContent = d[1];
+      li.append(document.createTextNode(d[0].replace('___', ' ___ ') + ' '), b, document.createTextNode('. ' + d[4]));
+      $('missed').appendChild(li);
+    });
+    let best = score;
+    const bk = 'reefRunnerBest_' + catId + '_' + playerName;
+    try { best = Math.max(score, +localStorage.getItem(bk) || 0); localStorage.setItem(bk, best); } catch (e) {}
+    $('bestEnd').textContent = playerName + "'s best in " + CAT_NAME[catId] + ': ' + best;
+    $('endScreen').hidden = false;
+    $('againBtn').focus({ preventScroll: true });
+  }
+
+  function showMenu() {
+    clearPause(); try { bgm.pause(); } catch (e) {}
+    mode = 'start';
+    $('endScreen').hidden = true; $('startScreen').hidden = false; $('boardWrap').hidden = true;
+  }
+
+  function renderHearts(hit) {
+    const h = $('hearts'); h.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+      const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      s.setAttribute('viewBox', '0 0 26 24'); s.setAttribute('class', 'heart' + (i >= hearts ? ' lost' : '') + (hit && i === hearts ? ' hit' : ''));
+      s.innerHTML = '<path d="M13 22C5 15 2 11 2 7.5A5.5 5.5 0 0 1 13 6a5.5 5.5 0 0 1 11 1.5C24 11 21 15 13 22Z"/>';
+      h.appendChild(s);
+    }
+  }
+
+  /* ---------- Update ---------- */
+  function update(dt) {
+    if (paused) return;
+    time += dt;
+    const idle = mode !== 'play';
+    const frozen = !idle && phase === 'question';
+    const v = idle ? 4 : (frozen ? 0 : speed);
+    dist += v * dt;
+    px += (target - px) * Math.min(1, dt * 12);
+    shake = Math.max(0, shake - dt);
+
+    deco.forEach(d => { d.z -= v * dt; if (d.z < 1.4) Object.assign(d, newDeco(ZFAR + rand(0, 6))); });
+    bubbles.forEach(b => { b.y -= b.v * dt; if (b.y < -0.05) { b.y = 1.05; b.x = Math.random(); } });
+    pops.forEach(p => p.age += dt); pops = pops.filter(p => p.age < 1);
+
+    if (idle) return;
+
+    gates.forEach(g => { g.z -= v * dt; });
+    pearls.forEach(p => {
+      p.z -= v * dt;
+      if (!p.got && p.z <= ZP + 0.3 && p.z >= ZP - 1) {
+        if (p.lane === target) { p.got = true; score += 10; $('score').textContent = score; pops.push({ x: W / 2 + p.lane * LW, y: PY - LW * .7, t: '+10', age: 0, col: '#fff' }); }
+      }
+    });
+    gates = gates.filter(g => g.z > 1.5);
+    pearls = pearls.filter(p => p.z > 1.5 && !p.got);
+
+    if (phase === 'run' && cur && !cur.resolved && cur.z <= ZP + 0.2) openQuestion();
+    else if (phase === 'question') {
+      qTimer -= dt;
+      $('timerBar').style.width = Math.max(0, qTimer / QTIME * 100) + '%';
+      $('timerWrap').classList.toggle('low', qTimer < 3);
+      $('hint').textContent = Math.max(0, Math.ceil(qTimer)) + 's';
+      if (qTimer <= 0) answer(-1);
+    }
+    else if (phase === 'result') {
+      phaseTimer -= dt;
+      if (hearts <= 0) { endTimer += dt; if (endTimer > 1.8) endRun(); }
+      else if (phaseTimer <= 0) {
+        if (qi + 1 >= deck.length) endRun();
+        else { qi++; nextQuestion(); }
+      }
+    }
+  }
+
+  /* ---------- Drawing helpers ---------- */
+  function ell(x, y, rx, ry, fill, stroke, lw) {
+    ctx.beginPath(); ctx.ellipse(x, y, Math.max(rx, .1), Math.max(ry, .1), 0, 0, Math.PI * 2);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke(); }
+  }
+  function rrect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  function drawBackground() {
+    let g = ctx.createLinearGradient(0, 0, 0, HY);
+    g.addColorStop(0, C('--sky-deep')); g.addColorStop(1, C('--sky'));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, HY + 1);
+    // light rays
+    ctx.save(); ctx.globalAlpha = .22; ctx.fillStyle = '#fff';
+    for (let i = 0; i < 4; i++) {
+      const x = ((i * 0.31 + time * 0.01) % 1.3 - .15) * W;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + W * .12, 0); ctx.lineTo(x - W * .25 + W * .12, HY); ctx.lineTo(x - W * .25 - W * .05, HY); ctx.fill();
+    }
+    ctx.restore();
+    // distant reef silhouette
+    ctx.fillStyle = '#b7c9ea'; ctx.beginPath(); ctx.moveTo(0, HY);
+    for (let x = 0; x <= W; x += 12) ctx.lineTo(x, HY - 10 - 14 * Math.abs(Math.sin(x * .021 + 1)) - 8 * Math.sin(x * .07));
+    ctx.lineTo(W, HY); ctx.fill();
+    // seabed
+    g = ctx.createLinearGradient(0, HY, 0, H); g.addColorStop(0, '#f3e8d8'); g.addColorStop(1, C('--floor'));
+    ctx.fillStyle = g; ctx.fillRect(0, HY, W, H - HY);
+    // bubbles
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.5;
+    bubbles.forEach(b => { ctx.beginPath(); ctx.arc(b.x * W + Math.sin(time + b.r) * 6, b.y * H * .8, b.r, 0, 7); ctx.stroke(); });
+    ctx.restore();
+  }
+
+  function drawRoad() {
+    const s1 = 1.7, yb = HY + (PY - HY) * s1, wb = 1.5 * LW * s1;
+    const g = ctx.createLinearGradient(0, HY, 0, yb); g.addColorStop(0, '#dcd9f7'); g.addColorStop(1, C('--road'));
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(W / 2, HY); ctx.lineTo(W / 2 - wb, yb); ctx.lineTo(W / 2 + wb, yb); ctx.fill();
+    ctx.strokeStyle = C('--road-line');
+    [-1.5, -.5, .5, 1.5].forEach(x => {
+      ctx.lineWidth = Math.abs(x) > 1 ? 3 : 1.5; ctx.globalAlpha = Math.abs(x) > 1 ? 1 : .6;
+      ctx.beginPath(); ctx.moveTo(W / 2, HY); ctx.lineTo(W / 2 + x * LW * s1, yb); ctx.stroke();
+    });
+    ctx.globalAlpha = .3; const off = dist % 5;
+    for (let k = 0; k < 14; k++) {
+      const z = 1.9 + k * 5 - off + 5; if (z < 1.9 || z > ZFAR) continue;
+      const p = proj(0, z); ctx.lineWidth = 1 + 2 * p.s;
+      ctx.beginPath(); ctx.moveTo(p.x - 1.5 * LW * p.s, p.y); ctx.lineTo(p.x + 1.5 * LW * p.s, p.y); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  const CORAL = ['#ff8fa3', '#ffb36b', '#c58bf0'];
+  function drawDeco(d) {
+    const p = proj(d.x, d.z), u = LW * p.s; if (u < 1.5) return;
+    ctx.save(); ctx.globalAlpha = d.z > 50 ? clamp((ZFAR + 12 - d.z) / 26, 0, 1) : 1;
+    ctx.lineWidth = Math.max(1, u * .04); ctx.strokeStyle = INK; ctx.lineJoin = ctx.lineCap = 'round';
+    const sway = Math.sin(time * 1.6 + d.seed) * u * .08;
+    if (d.type === 'kelp') {
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath(); ctx.moveTo(p.x + i * u * .22, p.y);
+        const h = u * (1.8 + .4 * i * i);
+        ctx.bezierCurveTo(p.x + i * u * .22 + sway * 2, p.y - h * .35, p.x + i * u * .22 - sway * 2, p.y - h * .7, p.x + i * u * .22 + sway, p.y - h);
+        ctx.lineWidth = Math.max(2, u * .16); ctx.strokeStyle = INK; ctx.stroke();
+        ctx.lineWidth = Math.max(1, u * .09); ctx.strokeStyle = i === 0 ? '#3fae8c' : '#58c3a0'; ctx.stroke();
+      }
+    } else if (d.type === 'coral') {
+      const col = CORAL[d.hue];
+      [[-.22, .9], [0, 1.3], [.24, .8]].forEach(([dx, h], i) => {
+        ctx.beginPath(); ctx.moveTo(p.x + dx * u, p.y); ctx.lineTo(p.x + dx * u + sway * (i - 1) * .5, p.y - h * u * .9);
+        ctx.lineWidth = u * .2; ctx.strokeStyle = INK; ctx.stroke(); ctx.lineWidth = u * .12; ctx.strokeStyle = col; ctx.stroke();
+        ell(p.x + dx * u + sway * (i - 1) * .5, p.y - h * u * .95, u * .14, u * .14, col, INK, Math.max(1, u * .04));
+      });
+    } else if (d.type === 'rock') {
+      ctx.beginPath(); ctx.moveTo(p.x - u * .5, p.y); ctx.quadraticCurveTo(p.x - u * .45, p.y - u * .7, p.x - u * .1, p.y - u * .75); ctx.quadraticCurveTo(p.x + u * .5, p.y - u * .7, p.x + u * .55, p.y); ctx.closePath();
+      ctx.fillStyle = '#a79fd6'; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.x - u * .15, p.y - u * .55); ctx.lineTo(p.x + u * .1, p.y - u * .3); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(p.x, p.y - u * .05, u * .42, Math.PI, 0); ctx.closePath(); ctx.fillStyle = '#ffd1c2'; ctx.fill(); ctx.stroke();
+      for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(p.x, p.y - u * .05); ctx.lineTo(p.x + i * u * .17, p.y - u * .42 + Math.abs(i) * u * .03); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+  function drawGate(g) {
+    ctx.save(); ctx.globalAlpha = g.z > 50 ? clamp((ZFAR + 12 - g.z) / 26, 0, 1) : 1;
+    for (let i = 0; i < LANES; i++) {
+      const p = proj(i - 1, g.z), u = LW * p.s; if (u < 2) continue;
+      const bw = u * .94, bh = u * .66, ph = u * .42, lw = Math.max(1.2, u * .035);
+      ctx.lineWidth = lw; ctx.strokeStyle = INK; ctx.lineCap = 'round';
+      [-.33, .33].forEach(dx => { ctx.beginPath(); ctx.moveTo(p.x + dx * bw, p.y); ctx.lineTo(p.x + dx * bw, p.y - ph - 2); ctx.stroke(); });
+      const bx = p.x - bw / 2, by = p.y - ph - bh;
+      let fill = '#fffdf8';
+      if (g.resolved) { if (i === g.correct) fill = '#bfeccd'; else if (i === g.picked) fill = '#f8c7c3'; }
+      rrect(bx, by, bw, bh, u * .06); ctx.fillStyle = fill; ctx.fill(); ctx.stroke();
+      // blank white sign with a question mark
+      ctx.fillStyle = INK; ctx.font = '800 ' + (u * .42) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('?', p.x, by + bh * .55);
+    }
+    ctx.restore();
+  }
+
+  function drawPearl(pl) {
+    const p = proj(pl.lane, pl.z), u = LW * p.s; if (u < 2) return;
+    const y = p.y - u * .4 + Math.sin(time * 4 + pl.z) * u * .04, r = u * .17;
+    ctx.save(); ctx.globalAlpha = pl.z > 50 ? clamp((ZFAR + 12 - pl.z) / 26, 0, 1) : 1;
+    ell(p.x, p.y, r * .9, r * .3, 'rgba(60,40,140,.2)');
+    const g = ctx.createRadialGradient(p.x - r * .3, y - r * .3, r * .1, p.x, y, r);
+    g.addColorStop(0, '#fff'); g.addColorStop(1, '#d9d2f5');
+    ctx.beginPath(); ctx.arc(p.x, y, r, 0, 7); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = Math.max(1, u * .035); ctx.strokeStyle = INK; ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPlayer() {
+    const x = W / 2 + px * LW, y = PY, u = LW;
+    const col = OCTO[octo];
+    const bob = reduceMotion || mode === 'over' ? 0 : -Math.abs(Math.sin(time * 9)) * u * .06;
+    ell(x, y + u * .04, u * .4, u * .09, 'rgba(60,40,140,.28)');
+    ctx.save(); ctx.translate(x, y + bob); ctx.rotate((target - px) * .18);
+    const lw = Math.max(2, u * .035); ctx.lineJoin = 'round';
+    for (let i = 0; i < 5; i++) {
+      const tx = (i - 2) * u * .17, w = Math.sin(time * 9 + i * 1.3) * u * .025;
+      ell(tx + w, -u * .06, u * .1, u * .13, col[1], INK, lw);
+    }
+    ell(0, -u * .38, u * .37, u * .4, col[0], INK, lw);
+    ctx.save(); ctx.beginPath(); ctx.ellipse(0, -u * .38, u * .37, u * .4, 0, 0, 7); ctx.clip();
+    ell(-u * .05, -u * .1, u * .5, u * .2, col[2]);
+    ctx.restore();
+    ell(0, -u * .38, u * .37, u * .4, null, INK, lw);
+    ell(-u * .13, -u * .55, u * .1, u * .15, 'rgba(255,255,255,.5)');
+    ctx.beginPath(); ctx.moveTo(-u * .08, -u * .76); ctx.quadraticCurveTo(0, -u * .95, u * .1, -u * .76);
+    ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke();
+    ctx.restore();
+    // username tag above the octopus
+    if (mode === 'play' && playerName) {
+      ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.font = '800 ' + Math.max(11, u * .17) + 'px ' + FONT; ctx.lineJoin = 'round';
+      ctx.lineWidth = 4; ctx.strokeStyle = '#fffdf8'; ctx.strokeText(playerName, x, y + bob - u * 1.02);
+      ctx.fillStyle = INK; ctx.fillText(playerName, x, y + bob - u * 1.02);
+      ctx.restore();
+    }
+  }
+
+  function drawPops() {
+    pops.forEach(p => {
+      const a = 1 - p.age; ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center';
+      ctx.font = '800 ' + Math.max(16, LW * .26) + 'px ' + FONT; ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.lineJoin = 'round';
+      const y = p.y - p.age * LW * .7; ctx.strokeText(p.t, p.x, y); ctx.fillStyle = p.col; ctx.fillText(p.t, p.x, y); ctx.restore();
+    });
+  }
+
+  function render() {
+    ctx.save();
+    if (shake > 0 && !reduceMotion) ctx.translate(rand(-1, 1) * shake * 16, rand(-1, 1) * shake * 10);
+    ctx.clearRect(-20, -20, W + 40, H + 40);
+    drawBackground(); drawRoad();
+    const items = [];
+    deco.forEach(d => items.push({ z: d.z, f: () => drawDeco(d) }));
+    gates.forEach(g => items.push({ z: g.z, f: () => drawGate(g) }));
+    pearls.forEach(p => items.push({ z: p.z, f: () => drawPearl(p) }));
+    items.push({ z: ZP, f: drawPlayer });
+    items.sort((a, b) => b.z - a.z).forEach(i => i.f());
+    drawPops();
+    ctx.restore();
+  }
+
+  /* ---------- Input ---------- */
+  const move = d => { if (mode === 'play' && !paused && phase !== 'question') target = clamp(target + d, -1, 1); };
+  addEventListener('keydown', e => {
+    if (e.target && e.target.tagName === 'INPUT') return;   // let the username box accept typing
+    if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { setPause(!paused); return; }
+    if (paused) return;
+    if (mode === 'play' && phase === 'question' && (e.key === '1' || e.key === '2' || e.key === '3')) { answer(+e.key - 1); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { move(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { move(1); e.preventDefault(); }
+  });
+  let down = null;
+  $('app').addEventListener('pointerdown', e => { if (e.target.closest('button') || e.target.closest('input')) return; down = { x: e.clientX, y: e.clientY }; });
+  addEventListener('pointerup', e => {
+    if (!down) return; const dx = e.clientX - down.x, r = $('app').getBoundingClientRect(); down = null;
+    if (Math.abs(dx) > 26) move(dx > 0 ? 1 : -1); else move(e.clientX < r.left + r.width / 2 ? -1 : 1);
+  });
+  addEventListener('pointercancel', () => { down = null; });
+  const bgm = $('bgm'); let muted = false;
+  try { muted = localStorage.getItem('reefRunnerMuted') === '1'; } catch (e) {}
+  function syncMute() { bgm.muted = muted; $('muteBtn').setAttribute('aria-pressed', muted); }
+  function playMusic() { bgm.volume = .55; syncMute(); const p = bgm.play(); if (p && p.catch) p.catch(() => {}); }
+  $('muteBtn').addEventListener('click', e => {
+    e.stopPropagation(); muted = !muted; syncMute();
+    try { localStorage.setItem('reefRunnerMuted', muted ? '1' : '0'); } catch (err) {}
+    if (!muted && bgm.paused && mode === 'play' && !paused) playMusic();
+  });
+  $('muteBtn').addEventListener('pointerdown', e => e.stopPropagation());
+  syncMute();
+  $('opts').addEventListener('click', e => { const b = e.target.closest('.ans'); if (b) answer(+b.dataset.i); });
+  $('cats').addEventListener('click', e => { const b = e.target.closest('button[data-cat]'); if (b) startRun(b.dataset.cat); });
+  $('againBtn').addEventListener('click', () => startRun());
+  $('menuBtn').addEventListener('click', showMenu);
+
+  $('pauseBtn').addEventListener('click', e => { e.stopPropagation(); setPause(true); });
+  $('resumeBtn').addEventListener('click', () => setPause(false));
+  $('restartBtn').addEventListener('click', () => startRun());
+  $('pauseMenuBtn').addEventListener('click', showMenu);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
+  $('swatches').addEventListener('click', e => {
+    const b = e.target.closest('.sw'); if (!b) return;
+    octo = +b.dataset.i; renderSwatches();
+    try { localStorage.setItem('reefOcto', octo); } catch (err) {}
+  });
+
+  /* ---------- Boot ---------- */
+  renderHearts(); renderSwatches(); $('nameIn').value = playerName; resize(); initScene();
+  if (window.ResizeObserver) new ResizeObserver(resize).observe($('app')); else addEventListener('resize', resize);
+  let last = performance.now();
+  (function loop(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; update(dt); render(); requestAnimationFrame(loop); })(last);
+})();
+</script>
+</body>
+</html>
